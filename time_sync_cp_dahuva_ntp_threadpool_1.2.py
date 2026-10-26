@@ -67,22 +67,22 @@ def load_devices_from_db():
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cursor = conn.cursor(dictionary=True)
-        query = (
-            "SELECT ATMID as atm_id, IPAddress as ip, port, "
-            "UserName as username, Password as password "
-            "FROM all_dvr_live "
-            "WHERE dvrname IN ('CPPLUS', 'CP PLUS', 'DAHUVA') AND live = 'Y' "
-            "AND IPAddress IS NOT NULL AND IPAddress != '';"
-        )
-
         # query = (
         #     "SELECT ATMID as atm_id, IPAddress as ip, port, "
         #     "UserName as username, Password as password "
         #     "FROM all_dvr_live "
-        #     "WHERE dvrname IN ('CPPLUS', 'CP PLUS', 'DAHUVA') "
-        #     "AND live = 'Y' "
-        #     "AND IPAddress IN ('172.17.19.155');"
+        #     "WHERE dvrname IN ('CPPLUS', 'CP PLUS', 'DAHUVA') AND live = 'Y' "
+        #     "AND IPAddress IS NOT NULL AND IPAddress != '';"
         # )
+
+        query = (
+            "SELECT ATMID as atm_id, IPAddress as ip, port, "
+            "UserName as username, Password as password "
+            "FROM all_dvr_live "
+            "WHERE dvrname IN ('CPPLUS', 'CP PLUS', 'DAHUVA') "
+            "AND live = 'Y' "
+            "AND IPAddress IN ('172.17.21.18');"
+        )
 
         cursor.execute(query)
         rows = cursor.fetchall()
@@ -159,7 +159,8 @@ def configure_cpplus_ntp(ip, port, username, password):
 # ============================================================
 # DATABASE - Update sync flag after time correction
 # ============================================================
-def update_sync_flag_in_db(ip):
+# def update_sync_flag_in_db(ip):
+def update_sync_flag_in_db(ip, dvr_time_str, time_diff):
     """
     After syncing DVR time, update all_dvr_live:
       dvrtime_sync_flag = '1'
@@ -171,11 +172,16 @@ def update_sync_flag_in_db(ip):
         conn = mysql.connector.connect(**DB_CONFIG)
         cursor = conn.cursor()
         now_str = datetime.now().strftime(FMT)
+        # update_query = (
+        #     "UPDATE all_dvr_live SET dvrtime_sync_flag = '1', "
+        #     "dvrtime_udate = %s WHERE IPAddress = %s"
+        # )
         update_query = (
             "UPDATE all_dvr_live SET dvrtime_sync_flag = '1', "
-            "dvrtime_udate = %s WHERE IPAddress = %s"
+            "dvrtime_udate = %s, dvr_time = %s, time_diff = %s "
+            "WHERE IPAddress = %s"
         )
-        cursor.execute(update_query, (now_str, ip))
+        cursor.execute(update_query, (now_str, dvr_time_str, time_diff, ip))
         conn.commit()
         return True
     except Exception as e:
@@ -215,7 +221,8 @@ def process_device(dev, index, total):
                 new_dev_time, _ = get_cpplus_time(ip, port, username, password)
                 new_delta = abs((datetime.now() - new_dev_time).total_seconds())
                 if new_delta <= TIME_DIFF_THRESHOLD:
-                    update_sync_flag_in_db(ip)
+                    diff_formatted = str(timedelta(seconds=int(new_delta)))
+                    update_sync_flag_in_db(ip, new_dev_time.strftime(FMT), diff_formatted)
                     with print_lock:
                         print()
                         info(f"[{index}/{total}]  ATM: {atm_id}   IP: {ip}:{port}")

@@ -159,7 +159,7 @@ def configure_cpplus_ntp(ip, port, username, password):
 # ============================================================
 # DATABASE - Update sync flag after time correction
 # ============================================================
-def update_sync_flag_in_db(ip):
+def update_sync_flag_in_db(ip, dvr_time_str, time_diff):
     """
     After syncing DVR time, update all_dvr_live:
       dvrtime_sync_flag = '1'
@@ -173,9 +173,10 @@ def update_sync_flag_in_db(ip):
         now_str = datetime.now().strftime(FMT)
         update_query = (
             "UPDATE all_dvr_live SET dvrtime_sync_flag = '1', "
-            "dvrtime_udate = %s WHERE IPAddress = %s"
+            "dvrtime_udate = %s, dvr_time = %s, time_diff = %s "
+            "WHERE IPAddress = %s"
         )
-        cursor.execute(update_query, (now_str, ip))
+        cursor.execute(update_query, (now_str, dvr_time_str, time_diff, ip))
         conn.commit()
         log_ok(f"DB updated: sync flag set for IP {ip}")
     except Exception as e:
@@ -221,7 +222,8 @@ def process_device(dev, index, total):
                 new_delta = abs((datetime.now() - new_dev_time).total_seconds())
                 if new_delta <= TIME_DIFF_THRESHOLD:
                     log_warn(f"Time SYNCED! diff was {int(delta)}s -> Now: {int(new_delta)}s (Fixed)")
-                    update_sync_flag_in_db(ip)
+                    diff_formatted = str(timedelta(seconds=int(new_delta)))
+                    update_sync_flag_in_db(ip, new_dev_time.strftime(FMT), diff_formatted)
                     return "synced", new_delta
                 else:
                     log_warn(f"NTP configured, but DVR clock not synced yet (diff: {int(new_delta)}s). DB flag NOT updated.")

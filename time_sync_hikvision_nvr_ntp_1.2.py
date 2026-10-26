@@ -173,7 +173,7 @@ def configure_ntp_server(ip, port, username, password):
 # ============================================================
 # DATABASE - Update sync flag after time correction
 # ============================================================
-def update_sync_flag_in_db(ip):
+def update_sync_flag_in_db(ip, dvr_time_str, time_diff):
     """
     After syncing Hikvision NVR time, update all_dvr_live:
       dvrtime_sync_flag = '1'
@@ -187,9 +187,10 @@ def update_sync_flag_in_db(ip):
         now_str = datetime.now().strftime(FMT)
         update_query = (
             "UPDATE all_dvr_live SET dvrtime_sync_flag = '1', "
-            "dvrtime_udate = %s WHERE IPAddress = %s"
+            "dvrtime_udate = %s, dvr_time = %s, time_diff = %s "
+            "WHERE IPAddress = %s"
         )
-        cursor.execute(update_query, (now_str, ip))
+        cursor.execute(update_query, (now_str, dvr_time_str, time_diff, ip))
         conn.commit()
         return True
     except Exception as e:
@@ -231,7 +232,8 @@ def process_device(dev, index, total):
                 new_nvr_time, _ = get_nvr_time(ip, port, username, password)
                 new_delta = abs((datetime.now().replace(microsecond=0) - new_nvr_time).total_seconds())
                 if new_delta <= TIME_DIFF_THRESHOLD:
-                    update_sync_flag_in_db(ip)
+                    diff_formatted = str(timedelta(seconds=int(new_delta)))
+                    update_sync_flag_in_db(ip, new_nvr_time.strftime(FMT), diff_formatted)
                     with print_lock:
                         log_warn(f"{ip}:{port} (ATM: {atm_id}) - Time SYNCED! diff: {int(delta)}s -> {int(new_delta)}s (Fixed & DB Updated)")
                     return "synced", new_delta

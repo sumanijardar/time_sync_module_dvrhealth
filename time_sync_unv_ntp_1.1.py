@@ -159,7 +159,7 @@ def set_unv_time(ip, port, username, password, new_time):
 # ============================================================
 # DATABASE - Update sync flag after time correction
 # ============================================================
-def update_sync_flag_in_db(ip):
+def update_sync_flag_in_db(ip, dvr_time_str, time_diff):
     """
     After syncing DVR time, update all_dvr_live:
       dvrtime_sync_flag = '1'
@@ -173,10 +173,11 @@ def update_sync_flag_in_db(ip):
         now_str = datetime.now().strftime(FMT)
         update_query = (
             "UPDATE all_dvr_live SET dvrtime_sync_flag = '1', "
-            "dvrtime_udate = %s WHERE IPAddress = %s"
+            "dvrtime_udate = %s, dvr_time = %s, time_diff = %s "
+            "WHERE IPAddress = %s"
         )
         info(f"  DB UPDATE -> dvrtime_sync_flag='1', dvrtime_udate='{now_str}' WHERE IP='{ip}'")
-        cursor.execute(update_query, (now_str, ip))
+        cursor.execute(update_query, (now_str, dvr_time_str, time_diff, ip))
         conn.commit()
         log_ok(f"DB updated: sync flag set for IP {ip} (rows: {cursor.rowcount})")
     except Exception as e:
@@ -212,10 +213,17 @@ def process_device(dev, index, total):
 
         if delta > TIME_DIFF_THRESHOLD:
             set_unv_time(ip, port, username, password, local_time)
-            log_warn(f"Time SYNCED! diff was {int(delta)}s -> Fixed")
-            # Update DB sync flag
-            update_sync_flag_in_db(ip)
-            return "synced", delta
+            time.sleep(2)
+            try:
+                new_dev_time, _ = get_unv_time(ip, port, username, password)
+                new_delta = abs((datetime.now() - new_dev_time).total_seconds())
+            except Exception:
+                new_dev_time = local_time
+                new_delta = 0
+            log_warn(f"Time SYNCED! diff was {int(delta)}s -> Now: {int(new_delta)}s (Fixed)")
+            diff_formatted = str(timedelta(seconds=int(new_delta)))
+            update_sync_flag_in_db(ip, new_dev_time.strftime(FMT), diff_formatted)
+            return "synced", new_delta
         else:
             log_ok(f"Time OK -- diff is only {int(delta)}s (threshold: {TIME_DIFF_THRESHOLD}s)")
             return "ok", delta
